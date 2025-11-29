@@ -3,25 +3,182 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Админ-панель - Кондитерская</title>
+    <title>Админ-панель</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-        h1 { color: #333; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-        th { background-color: #4CAF50; color: white; }
-        .status { padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .header { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px; }
+        .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .stat-number { font-size: 2em; font-weight: bold; color: #007bff; }
+        .filters { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .orders-grid { display: grid; gap: 20px; }
+        .order-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .order-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .order-id { font-weight: bold; color: #007bff; }
+        .order-status { padding: 5px 10px; border-radius: 15px; font-size: 0.8em; }
         .status-new { background: #ffeb3b; }
-        .status-confirmed { background: #4caf50; color: white; }
+        .status-confirmed { background: #2196f3; color: white; }
+        .status-printed { background: #4caf50; color: white; }
         .status-cancelled { background: #f44336; color: white; }
+        .order-items { margin: 10px 0; }
+        .order-total { font-weight: bold; text-align: right; }
+        .btn { padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; margin: 2px; }
+        .btn-print { background: #4caf50; color: white; }
+        .btn-confirm { background: #2196f3; color: white; }
+        .btn-cancel { background: #f44336; color: white; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🎂 Админ-панель кондитерской</h1>
-        <p>Загрузка данных...</p>
-        <div id="orders"></div>
+        <div class="header">
+            <h1>📊 Панель управления заказами</h1>
+            <p>Кондитерская бот</p>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="today-orders">0</div>
+                <div>Заказов сегодня</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="today-revenue">0₽</div>
+                <div>Выручка сегодня</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="weekly-orders">0</div>
+                <div>Заказов за неделю</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="weekly-revenue">0₽</div>
+                <div>Выручка за неделю</div>
+            </div>
+        </div>
+
+        <div class="filters">
+            <button onclick="loadOrders()">Все</button>
+            <button onclick="loadOrders('new')">Новые</button>
+            <button onclick="loadOrders('confirmed')">Подтвержденные</button>
+            <button onclick="loadOrders('printed')">Распечатанные</button>
+            <button onclick="loadOrders('cancelled')">Отмененные</button>
+        </div>
+
+        <div class="orders-grid" id="orders-container">
+            <p>Загрузка заказов...</p>
+        </div>
     </div>
+
+    <script>
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const stats = await response.json();
+                
+                document.getElementById('today-orders').textContent = stats.today.orders || 0;
+                document.getElementById('today-revenue').textContent = (stats.today.revenue || 0) + '₽';
+                document.getElementById('weekly-orders').textContent = stats.weekly.orders || 0;
+                document.getElementById('weekly-revenue').textContent = (stats.weekly.revenue || 0) + '₽';
+            } catch(e) {
+                console.error('Ошибка загрузки статистики:', e);
+            }
+        }
+
+        async function loadOrders(status = null) {
+            try {
+                const url = status ? `/api/orders?status=${status}` : '/api/orders';
+                const response = await fetch(url);
+                const orders = await response.json();
+                
+                const container = document.getElementById('orders-container');
+                container.innerHTML = '';
+                
+                if (orders.length === 0) {
+                    container.innerHTML = '<p style="text-align:center;padding:20px;">Нет заказов</p>';
+                    return;
+                }
+                
+                orders.forEach(order => {
+                    const orderEl = document.createElement('div');
+                    orderEl.className = 'order-card';
+                    
+                    let itemsHtml = '';
+                    if (order.items) {
+                        order.items.forEach(item => {
+                            itemsHtml += `<div>${item.name} - ${item.quantity} × ${item.price}₽ = ${item.total}₽</div>`;
+                        });
+                    }
+                    
+                    orderEl.innerHTML = `
+                        <div class="order-header">
+                            <span class="order-id">Заказ #${order.id}</span>
+                            <span class="order-status status-${order.status}">${getStatusText(order.status)}</span>
+                        </div>
+                        <div><strong>Клиент:</strong> ${order.customer || 'Не указан'}</div>
+                        <div><strong>Телефон:</strong> ${order.phone || 'Не указан'}</div>
+                        <div><strong>Адрес:</strong> ${order.address || 'Не указан'}</div>
+                        <div class="order-items"><strong>Товары:</strong>${itemsHtml}</div>
+                        <div class="order-total">Итого: ${order.total_amount}₽</div>
+                        <div><small>Создан: ${order.created_at}</small></div>
+                        <div style="margin-top:10px;">
+                            ${order.status !== 'printed' ? `<button class="btn btn-print" onclick="printOrder(${order.id})">🖨️ Печать</button>` : ''}
+                            ${order.status === 'new' ? `<button class="btn btn-confirm" onclick="updateStatus(${order.id}, 'confirmed')">✅ Подтвердить</button>` : ''}
+                            ${order.status !== 'cancelled' ? `<button class="btn btn-cancel" onclick="updateStatus(${order.id}, 'cancelled')">❌ Отменить</button>` : ''}
+                        </div>
+                    `;
+                    
+                    container.appendChild(orderEl);
+                });
+            } catch(e) {
+                console.error('Ошибка загрузки заказов:', e);
+                document.getElementById('orders-container').innerHTML = '<p style="color:red;">Ошибка загрузки заказов</p>';
+            }
+        }
+
+        function getStatusText(status) {
+            const statuses = {
+                'new': 'Новый',
+                'confirmed': 'Подтвержден',
+                'printed': 'Распечатан',
+                'cancelled': 'Отменен'
+            };
+            return statuses[status] || status;
+        }
+
+        async function printOrder(orderId) {
+            alert(`Печать заказа #${orderId} (функция в разработке)`);
+        }
+
+        async function updateStatus(orderId, status) {
+            try {
+                const response = await fetch(`/api/order/${orderId}/status`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status })
+                });
+                
+                if (response.ok) {
+                    loadOrders();
+                    loadStats();
+                } else {
+                    alert('Ошибка обновления статуса');
+                }
+            } catch(e) {
+                console.error('Ошибка:', e);
+                alert('Ошибка обновления статуса');
+            }
+        }
+
+        // Загрузка при старте
+        loadStats();
+        loadOrders();
+        
+        // Обновление каждые 30 секунд
+        setInterval(() => {
+            loadStats();
+            loadOrders();
+        }, 30000);
+    </script>
 </body>
 </html>
